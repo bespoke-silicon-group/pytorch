@@ -7,6 +7,12 @@
 #include <ATen/NativeFunctions.h>
 #include <ATen/native/TensorIterator.h>
 
+#include <bsg_manycore_cuda.h>
+#include <bsg_manycore_tile.h>
+#include <bsg_manycore_loader.h>
+#include <bsg_manycore_errno.h>
+#include <bsg_manycore_printing.h>
+
 namespace at {
 namespace native {
 
@@ -42,6 +48,117 @@ Tensor& add_out(Tensor& result, const Tensor& self, const Tensor& other, Scalar 
 }
 
 Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
+  //===================================================
+  // HammerBlade Kernel Launch
+  //
+
+  #define ALLOC_NAME "default_allocator"
+  int rc;
+  hb_mc_dimension_t tg_dim = { .x = 2, .y = 2}; 
+  hb_mc_dimension_t grid_dim = { .x = 1, .y = 1}; 
+  hb_mc_device_t device;
+  char bin_path[] = "/mnt/users/ssd1/no_backup/bandhav/"
+    "bsg_bladerunner/bsg_manycore/software/torch/add/add.riscv"; // add(a, b, c): c <- a + b
+
+  //+---------------------------------
+  // Init device and load the program
+  //+---------------------------------
+
+  rc = hb_mc_device_init(&device, "add", 0);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to initialize device.\n");
+  }
+
+  rc = hb_mc_device_program_init(&device, bin_path, ALLOC_NAME, 0);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to initialize program.\n");
+  }
+
+
+  //+-------------------------------------------
+  // Allocate memory for argument on the device
+  //+-------------------------------------------
+
+  eva_t a_device, b_device, c_device;
+  int a_host = 545, b_host = 454;
+
+  rc = hb_mc_device_malloc(&device, sizeof(uint32_t), &a_device);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to allocate memory on device.\n");
+  }
+
+  rc = hb_mc_device_malloc(&device, sizeof(uint32_t), &b_device);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to allocate memory on device.\n");
+  }
+
+  rc = hb_mc_device_malloc(&device, sizeof(uint32_t), &c_device);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to allocate memory on device.\n");
+  }
+
+
+  //+-------------------------------------------
+  // Copy arguments to device memory
+  //+-------------------------------------------
+
+  void *dst = (void *) ((intptr_t) a_device);
+  void *src = (void *) ((intptr_t) &a_host);
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_DEVICE); 
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to copy a to device.\n");
+  }
+
+  dst = (void *) ((intptr_t) b_device);
+  src = (void *) ((intptr_t) &b_host);
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_DEVICE); 
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to copy b to device.\n");
+  }
+
+
+  //+-------------------------------------
+  // Populate arguments and launch kernel
+  //+-------------------------------------
+  
+  const uint32_t cuda_argv[3] = {a_device, b_device, c_device};
+
+  rc = hb_mc_kernel_enqueue (&device, grid_dim, tg_dim, "add", 3, cuda_argv);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to initialize grid.\n");
+  }
+
+  rc = hb_mc_device_tile_groups_execute(&device);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to execute tile groups.\n");
+  }
+
+
+  //+-------------------------------------
+  // Copy back the result
+  //+-------------------------------------
+
+  uint32_t c_host;
+  src = (void*) ((intptr_t) c_device);
+  dst = (void*) (&c_host);
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_DEVICE); 
+  if (rc != HB_MC_SUCCESS) { 
+    bsg_pr_err("failed to copy c from device.\n");
+  } else {
+    bsg_pr_info("\nReceived %d from device!\n", c_host);
+  }
+    
+
+  //+----------------------------------------
+  // Freeze tiles and cleanup memory manager
+  //+----------------------------------------
+
+  rc = hb_mc_device_finish(&device); 
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to de-initialize device.\n");
+  }
+  //=========================================================================
+
   Tensor result;
   auto iter = TensorIterator::binary_op(result, self, other);
   alpha_check(iter.dtype(), alpha);
