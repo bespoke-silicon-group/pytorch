@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 SET(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 list(APPEND ATen_CPU_INCLUDE ${CMAKE_SOURCE_DIR}/../../bsg_bladerunner/bsg_f1/libraries)
-list(APPEND ATen_CPU_DEPENDENCY_LIBS ${CMAKE_SOURCE_DIR}/../../bsg_bladerunner/bsg_f1/libraries/libbsg_manycore_runtime.so)
+find_library(BSG_MANYCORE_RUNTIME_LIB bsg_manycore_runtime HINTS ${CMAKE_SOURCE_DIR}/../../bsg_bladerunner/bsg_f1/libraries)
+list(APPEND ATen_CPU_DEPENDENCY_LIBS ${BSG_MANYCORE_RUNTIME_LIB})
 
 IF(NOT MSVC)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-ignored-qualifiers")
