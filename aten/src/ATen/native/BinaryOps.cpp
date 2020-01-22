@@ -7,6 +7,8 @@
 #include <ATen/NativeFunctions.h>
 #include <ATen/native/TensorIterator.h>
 
+#include <iostream>
+#include <ATen/native/cpu/Loops.h>
 #include <bsg_manycore_cuda.h>
 #include <bsg_manycore_tile.h>
 #include <bsg_manycore_loader.h>
@@ -48,8 +50,24 @@ Tensor& add_out(Tensor& result, const Tensor& self, const Tensor& other, Scalar 
 }
 
 Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
-  //===================================================
-  // HammerBlade Kernel Launch
+  /************************************/
+  /*      Original implementation     */
+  /************************************/
+  /*
+  Tensor result;
+  auto iter = TensorIterator::binary_op(result, self, other);
+  alpha_check(iter.dtype(), alpha);
+  add_stub(iter.device_type(), iter, alpha);
+  return iter.output();
+  */
+
+
+  /************************************/
+  /*      HammberBlade version        */
+  /************************************/
+
+  //===================================
+  // Device initiation
   //
 
   #define ALLOC_NAME "default_allocator"
@@ -58,11 +76,10 @@ Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
   hb_mc_dimension_t grid_dim = { .x = 1, .y = 1}; 
   hb_mc_device_t device;
   char bin_path[] = "/mnt/users/ssd1/no_backup/bandhav/"
-    "bsg_bladerunner/bsg_manycore/software/torch/add/add.riscv"; // add(a, b, c): c <- a + b
+    "bsg_bladerunner/bsg_manycore/software/torch/add/add.riscv"; // add(c, a, b, alpha): c <- a + alpha * b
 
   //+---------------------------------
   // Init device and load the program
-  //+---------------------------------
 
   rc = hb_mc_device_init(&device, "add", 0);
   if (rc != HB_MC_SUCCESS) { 
@@ -75,55 +92,128 @@ Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
   }
 
 
-  //+-------------------------------------------
-  // Allocate memory for argument on the device
-  //+-------------------------------------------
+  //==================================
+  // Data loading
+  //
 
-  eva_t a_device, b_device, c_device;
-  int a_host = 545, b_host = 454;
+  typedef struct {
+    uint32_t N;
+    eva_t strides;
+    eva_t data;
+  } hb_mc_tensor_t;
 
-  rc = hb_mc_device_malloc(&device, sizeof(uint32_t), &a_device);
+  alpha_check(self.scalar_type(), alpha);
+
+  Tensor self_c = self.toType(ScalarType::Float);
+  Tensor other_c = other.toType(ScalarType::Float);
+  float alpha_c = alpha.to<float>();
+
+  // Device tensor pointers
+  eva_t self_dev, other_dev, result_dev, alpha_dev;
+
+  rc = hb_mc_device_malloc(&device, sizeof(hb_mc_tensor_t), &self_dev);
   if (rc != HB_MC_SUCCESS) { 
           bsg_pr_err("failed to allocate memory on device.\n");
   }
 
-  rc = hb_mc_device_malloc(&device, sizeof(uint32_t), &b_device);
+  rc = hb_mc_device_malloc(&device, sizeof(hb_mc_tensor_t), &other_dev);
   if (rc != HB_MC_SUCCESS) { 
           bsg_pr_err("failed to allocate memory on device.\n");
   }
 
-  rc = hb_mc_device_malloc(&device, sizeof(uint32_t), &c_device);
+  rc = hb_mc_device_malloc(&device, sizeof(hb_mc_tensor_t), &result_dev);
   if (rc != HB_MC_SUCCESS) { 
           bsg_pr_err("failed to allocate memory on device.\n");
   }
 
+  rc = hb_mc_device_malloc(&device, sizeof(float), &alpha_dev);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to allocate memory on device.\n");
+  }
 
-  //+-------------------------------------------
-  // Copy arguments to device memory
-  //+-------------------------------------------
+  // Device data pointers
+  eva_t self_dev_data, other_dev_data, result_dev_data;
 
-  void *dst = (void *) ((intptr_t) a_device);
-  void *src = (void *) ((intptr_t) &a_host);
-  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_DEVICE); 
+  rc = hb_mc_device_malloc(&device, self.numel() * sizeof(float), &self_dev_data);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to allocate memory on device.\n");
+  }
+
+  rc = hb_mc_device_malloc(&device, other.numel() * sizeof(float), &other_dev_data);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to allocate memory on device.\n");
+  }
+
+  rc = hb_mc_device_malloc(&device, self.numel() * sizeof(float), &result_dev_data);
+  if (rc != HB_MC_SUCCESS) { 
+          bsg_pr_err("failed to allocate memory on device.\n");
+  }
+
+  // Copy raw tensor data
+  //
+
+  void *dst = (void *) ((intptr_t) self_dev_data);
+  void *src = (void *) ((intptr_t) self_c.data_ptr());
+  rc = hb_mc_device_memcpy (&device, dst, src, self_c.numel() * sizeof(float), HB_MC_MEMCPY_TO_DEVICE); 
   if (rc != HB_MC_SUCCESS) { 
           bsg_pr_err("failed to copy a to device.\n");
   }
 
-  dst = (void *) ((intptr_t) b_device);
-  src = (void *) ((intptr_t) &b_host);
-  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_DEVICE); 
+  dst = (void *) ((intptr_t) other_dev_data);
+  src = (void *) ((intptr_t) other_c.data_ptr());
+  rc = hb_mc_device_memcpy (&device, dst, src, other_c.numel() * sizeof(float), HB_MC_MEMCPY_TO_DEVICE); 
   if (rc != HB_MC_SUCCESS) { 
-          bsg_pr_err("failed to copy b to device.\n");
+          bsg_pr_err("failed to copy a to device.\n");
+  }
+
+  // Device strides pointers
+  eva_t self_dev_stride, other_dev_stride, result_dev_stride;
+
+  // Copy tensor args to device; this kernel doesn't need strides, so they are skipped.
+  //
+
+  // Kernel arguments
+  hb_mc_tensor_t self_host = {.N = self.numel(), .strides = self_dev_stride, .data = self_dev_data};
+  hb_mc_tensor_t other_host = {.N = other.numel(), .strides = other_dev_stride, .data = other_dev_data};
+  hb_mc_tensor_t result_host = {.N = self.numel(), .strides = result_dev_stride, .data = result_dev_data};
+  float alpha_host = alpha_c;
+
+  dst = (void *) ((intptr_t) self_dev);
+  src = (void *) ((intptr_t) &self_host);
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(hb_mc_tensor_t), HB_MC_MEMCPY_TO_DEVICE); 
+  if (rc != HB_MC_SUCCESS) {
+          bsg_pr_err("failed to copy a to device.\n");
+  }
+
+  dst = (void *) ((intptr_t) other_dev);
+  src = (void *) ((intptr_t) &other_host);
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(hb_mc_tensor_t), HB_MC_MEMCPY_TO_DEVICE); 
+  if (rc != HB_MC_SUCCESS) {
+          bsg_pr_err("failed to copy a to device.\n");
+  }
+
+  dst = (void *) ((intptr_t) result_dev);
+  src = (void *) ((intptr_t) &result_host);
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(hb_mc_tensor_t), HB_MC_MEMCPY_TO_DEVICE); 
+  if (rc != HB_MC_SUCCESS) {
+          bsg_pr_err("failed to copy a to device.\n");
+  }
+
+  dst = (void *) ((intptr_t) alpha_dev);
+  src = (void *) ((intptr_t) &alpha_host);
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(float), HB_MC_MEMCPY_TO_DEVICE); 
+  if (rc != HB_MC_SUCCESS) {
+          bsg_pr_err("failed to copy a to device.\n");
   }
 
 
-  //+-------------------------------------
-  // Populate arguments and launch kernel
-  //+-------------------------------------
-  
-  const uint32_t cuda_argv[3] = {a_device, b_device, c_device};
+  //===================================================
+  // Kernel Offload
+  //
 
-  rc = hb_mc_kernel_enqueue (&device, grid_dim, tg_dim, "add", 3, cuda_argv);
+  const uint32_t cuda_argv[4] = {result_dev, self_dev, other_dev, alpha_dev};
+
+  rc = hb_mc_kernel_enqueue (&device, grid_dim, tg_dim, "add", 4, cuda_argv);
   if (rc != HB_MC_SUCCESS) { 
           bsg_pr_err("failed to initialize grid.\n");
   }
@@ -133,37 +223,29 @@ Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
           bsg_pr_err("failed to execute tile groups.\n");
   }
 
+  //===================================================
+  // Copy the result
+  //
 
-  //+-------------------------------------
-  // Copy back the result
-  //+-------------------------------------
+  // Result tensor
+  Tensor result = at::empty({0}, self.options());
+  result.resize_(self.sizes());
 
-  uint32_t c_host;
-  src = (void*) ((intptr_t) c_device);
-  dst = (void*) (&c_host);
-  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_HOST); 
+  // Copy the result from device memory
+  src = (void*) ((intptr_t) result_dev_data);
+  dst = (void*) ((intptr_t) result.data_ptr());
+  rc = hb_mc_device_memcpy (&device, dst, src, result.numel() * sizeof(float), HB_MC_MEMCPY_TO_HOST); 
   if (rc != HB_MC_SUCCESS) { 
     bsg_pr_err("failed to copy c from device.\n");
-  } else {
-    bsg_pr_info("\nReceived %d from device!\n", c_host);
-  }
-    
+  }    
 
-  //+----------------------------------------
   // Freeze tiles and cleanup memory manager
-  //+----------------------------------------
-
   rc = hb_mc_device_finish(&device); 
   if (rc != HB_MC_SUCCESS) { 
           bsg_pr_err("failed to de-initialize device.\n");
   }
-  //=========================================================================
 
-  Tensor result;
-  auto iter = TensorIterator::binary_op(result, self, other);
-  alpha_check(iter.dtype(), alpha);
-  add_stub(iter.device_type(), iter, alpha);
-  return iter.output();
+  return result;
 }
 
 Tensor& add_(Tensor& self, const Tensor& other, Scalar alpha) {
