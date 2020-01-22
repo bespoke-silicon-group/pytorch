@@ -39,6 +39,8 @@ SET_TARGET_PROPERTIES(shm PROPERTIES
   IMPORT_PREFIX "lib")
 TARGET_LINK_LIBRARIES(shm torch c10)
 
+set_target_properties(torch_shm_manager PROPERTIES LINK_OPTIONS -Wl,--allow-shlib-undefined)
+
 if(UNIX AND NOT APPLE)
   include(CheckLibraryExists)
   # https://github.com/libgit2/libgit2/issues/2128#issuecomment-35649830
