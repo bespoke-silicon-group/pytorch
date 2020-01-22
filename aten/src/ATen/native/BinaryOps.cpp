@@ -141,7 +141,7 @@ Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
   uint32_t c_host;
   src = (void*) ((intptr_t) c_device);
   dst = (void*) (&c_host);
-  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_DEVICE); 
+  rc = hb_mc_device_memcpy (&device, dst, src, sizeof(uint32_t), HB_MC_MEMCPY_TO_HOST); 
   if (rc != HB_MC_SUCCESS) { 
     bsg_pr_err("failed to copy c from device.\n");
   } else {
