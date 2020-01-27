@@ -35,29 +35,34 @@ DEFINE_DISPATCH(sigmoid_backward_stub);
 DEFINE_DISPATCH(tanh_backward_stub);
 
 Tensor& add_out(Tensor& result, const Tensor& self, const Tensor& other, Scalar alpha) {
+#if (USE_HB == 0)
   auto iter = TensorIterator::binary_op(result, self, other,
     /*check_mem_overlap=*/true);
   alpha_check(iter.dtype(), alpha);
   add_stub(iter.device_type(), iter, alpha);
   TORCH_INTERNAL_ASSERT(result.scalar_type() == iter.output().dtype());
   return result;
+#else
+  result.resize_(self.sizes());
+  alpha_check(self.scalar_type(), alpha);
+  hb_mc_offload_op_binary(result, self, other, alpha, "add");
+  return result;
+#endif
 }
 
 Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
-  /* HB_MC_TODO
+#if (USE_HB == 0)
   Tensor result;
   auto iter = TensorIterator::binary_op(result, self, other);
   alpha_check(iter.dtype(), alpha);
   add_stub(iter.device_type(), iter, alpha);
   return iter.output();
-  */
-
+#else
   // Result tensor
   Tensor result = at::empty({0}, self.options());
-  result.resize_(self.sizes());
-  alpha_check(self.scalar_type(), alpha);
-  hb_mc_offload_op_binary(result, self, other, alpha, "add");
+  native::add_out(result, self, other, alpha);
   return result;
+#endif
 }
 
 Tensor& add_(Tensor& self, const Tensor& other, Scalar alpha) {

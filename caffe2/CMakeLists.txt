@@ -44,6 +44,12 @@ if (INTERN_BUILD_ATEN_OPS)
   list(APPEND Caffe2_CUDA_DEPENDENCY_LIBS ${ATen_CUDA_DEPENDENCY_LIBS})
   list(APPEND Caffe2_HIP_DEPENDENCY_LIBS ${ATen_HIP_DEPENDENCY_LIBS})
   list(APPEND Caffe2_DEPENDENCY_INCLUDE ${ATen_THIRD_PARTY_INCLUDE})
+
+  IF(USE_HB)
+    add_definitions(-DUSE_HB=1)
+  ELSE()
+    add_definitions(-DUSE_HB=0)
+  ENDIF()  
 endif()
 
 # ---[ Caffe2 build
