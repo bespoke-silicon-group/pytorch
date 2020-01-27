@@ -35,7 +35,7 @@ DEFINE_DISPATCH(sigmoid_backward_stub);
 DEFINE_DISPATCH(tanh_backward_stub);
 
 Tensor& add_out(Tensor& result, const Tensor& self, const Tensor& other, Scalar alpha) {
-#if (USE_HB == 0)
+#ifndef USE_HB
   auto iter = TensorIterator::binary_op(result, self, other,
     /*check_mem_overlap=*/true);
   alpha_check(iter.dtype(), alpha);
@@ -51,7 +51,7 @@ Tensor& add_out(Tensor& result, const Tensor& self, const Tensor& other, Scalar 
 }
 
 Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
-#if (USE_HB == 0)
+#ifndef USE_HB
   Tensor result;
   auto iter = TensorIterator::binary_op(result, self, other);
   alpha_check(iter.dtype(), alpha);

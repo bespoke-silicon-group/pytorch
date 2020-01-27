@@ -11,6 +11,12 @@ namespace native {
 
 #define ALLOC_NAME "default_allocator"
 
+#define PATH(a) str(a)
+#define str(a) #a "/"
+char hb_mc_kernel_base_path[] = PATH(HB_DEVICE_DIR);
+#undef str
+#undef PATH
+
 /**
  * HammberBlade binary operator offloading routine:
  *
@@ -39,18 +45,16 @@ void hb_mc_offload_op_binary(Tensor& result, const Tensor& self,
   hb_mc_dimension_t tg_dim = { .x = 2, .y = 2}; 
   hb_mc_dimension_t grid_dim = { .x = 1, .y = 1}; 
   hb_mc_device_t device;
-  char base_path[] = "/mnt/users/ssd1/no_backup/bandhav/"
-    "bsg_bladerunner/bsg_manycore/software/tensorlib/build/"; // HB_MC_TODO: dectect this in build flow
   char kernel_ext[] = ".riscv";
 
   //+---------------------------------
   // Init device and load the program
 
-  char* bin_path = (char*) malloc(strlen(base_path) +
+  char* bin_path = (char*) malloc(strlen(hb_mc_kernel_base_path) +
         strlen(kernel) + strlen(kernel_ext) + 1);
-  strcpy(bin_path, base_path);
-  strcpy(bin_path + strlen(base_path), kernel);
-  strcpy(bin_path + strlen(base_path) + strlen(kernel), kernel_ext); 
+  strcpy(bin_path, hb_mc_kernel_base_path);
+  strcpy(bin_path + strlen(hb_mc_kernel_base_path), kernel);
+  strcpy(bin_path + strlen(hb_mc_kernel_base_path) + strlen(kernel), kernel_ext); 
 
   rc = hb_mc_device_init(&device, kernel, 0);
   if (rc != HB_MC_SUCCESS) { // HB_MC_TODO: replace these check with TORCH_CHECK

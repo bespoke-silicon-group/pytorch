@@ -20,7 +20,6 @@ typedef struct {
   eva_t data;    // Pointer to raw data
 } hb_mc_tensor_t;
 
-
 /**
  * HammberBlade binary operator offloading routine:
  *
@@ -40,6 +39,7 @@ typedef struct {
  */
 void hb_mc_offload_op_binary(Tensor& result, const Tensor& self, 
     const Tensor& other, Scalar alpha, const char* kernel);
+
 
 } // namespace native
 } // namespace at
