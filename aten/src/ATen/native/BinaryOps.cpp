@@ -70,17 +70,30 @@ Tensor& add_(Tensor& self, const Tensor& other, Scalar alpha) {
 }
 
 Tensor& div_out(Tensor& result, const Tensor& self, const Tensor& other) {
+#ifndef USE_HB
   auto iter = TensorIterator::binary_op(result, self, other,
     /*check_mem_overlap=*/true);
   div_stub(iter.device_type(), iter);
   return result;
+#else
+  result.resize_(self.sizes());
+  hb_mc_offload_op_binary(result, self, other, 0.0, "div");
+  return result;
+#endif
 }
 
 Tensor div(const Tensor& self, const Tensor& other) {
+#ifndef USE_HB
   Tensor result;
   auto iter = TensorIterator::binary_op(result, self, other);
   div_stub(iter.device_type(), iter);
   return iter.output();
+#else
+  // Result tensor
+  Tensor result = at::empty({0}, self.options());
+  native::div_out(result, self, other);
+  return result;
+#endif
 }
 
 Tensor& div_(Tensor& self, const Tensor& other) {

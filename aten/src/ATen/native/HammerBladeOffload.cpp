@@ -37,6 +37,8 @@ char hb_mc_kernel_base_path[] = PATH(HB_DEVICE_DIR);
 void hb_mc_offload_op_binary(Tensor& result, const Tensor& self, 
     const Tensor& other, Scalar alpha, const char* kernel) {
 
+  bsg_pr_info("Launching %s kernel...\n", kernel);
+
   //===================================
   // Device initiation
   //
