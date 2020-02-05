@@ -7,8 +7,6 @@
 #include <ATen/NativeFunctions.h>
 #include <ATen/native/TensorIterator.h>
 
-#include <ATen/native/HammerBladeOffload.h>
-
 namespace at {
 namespace native {
 
@@ -35,34 +33,20 @@ DEFINE_DISPATCH(sigmoid_backward_stub);
 DEFINE_DISPATCH(tanh_backward_stub);
 
 Tensor& add_out(Tensor& result, const Tensor& self, const Tensor& other, Scalar alpha) {
-#ifndef USE_HB
   auto iter = TensorIterator::binary_op(result, self, other,
     /*check_mem_overlap=*/true);
   alpha_check(iter.dtype(), alpha);
   add_stub(iter.device_type(), iter, alpha);
   TORCH_INTERNAL_ASSERT(result.scalar_type() == iter.output().dtype());
   return result;
-#else
-  result.resize_(self.sizes());
-  alpha_check(self.scalar_type(), alpha);
-  hb_mc_offload_op_binary(result, self, other, alpha, "add");
-  return result;
-#endif
 }
 
 Tensor add(const Tensor& self, const Tensor& other, Scalar alpha) {
-#ifndef USE_HB
   Tensor result;
   auto iter = TensorIterator::binary_op(result, self, other);
   alpha_check(iter.dtype(), alpha);
   add_stub(iter.device_type(), iter, alpha);
   return iter.output();
-#else
-  // Result tensor
-  Tensor result = at::empty({0}, self.options());
-  native::add_out(result, self, other, alpha);
-  return result;
-#endif
 }
 
 Tensor& add_(Tensor& self, const Tensor& other, Scalar alpha) {
@@ -70,30 +54,17 @@ Tensor& add_(Tensor& self, const Tensor& other, Scalar alpha) {
 }
 
 Tensor& div_out(Tensor& result, const Tensor& self, const Tensor& other) {
-#ifndef USE_HB
   auto iter = TensorIterator::binary_op(result, self, other,
     /*check_mem_overlap=*/true);
   div_stub(iter.device_type(), iter);
   return result;
-#else
-  result.resize_(self.sizes());
-  hb_mc_offload_op_binary(result, self, other, 0.0, "div");
-  return result;
-#endif
 }
 
 Tensor div(const Tensor& self, const Tensor& other) {
-#ifndef USE_HB
   Tensor result;
   auto iter = TensorIterator::binary_op(result, self, other);
   div_stub(iter.device_type(), iter);
   return iter.output();
-#else
-  // Result tensor
-  Tensor result = at::empty({0}, self.options());
-  native::div_out(result, self, other);
-  return result;
-#endif
 }
 
 Tensor& div_(Tensor& self, const Tensor& other) {

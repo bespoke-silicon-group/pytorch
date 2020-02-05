@@ -135,6 +135,14 @@ struct RegisterHIPDispatch {
     stub.cuda_dispatch_ptr = value;
   }
 };
+
+template <typename FnPtr, typename T>
+struct RegisterHBDispatch {
+  RegisterHBDispatch(DispatchStub<FnPtr, T>& stub, FnPtr value) {
+    // Repurpose CPU dispatch pointer for HB dispatch
+    stub.cpu_dispatch_ptr = value;
+  }
+};
 } // anonymous namespace
 
 // Compiler will complain if you put things like std::tuple<Tensor, Tensor> in
@@ -178,6 +186,9 @@ struct RegisterHIPDispatch {
 #define REGISTER_HIP_DISPATCH(name, fn) \
   static RegisterHIPDispatch<decltype(fn), struct name> name ## __register(name, fn);
 
+#define REGISTER_HB_DISPATCH(name, fn) \
+  static RegisterHBDispatch<decltype(fn), struct name> name ## __register(name, fn);
+
 // NB: This macro must be used in an actual 'cu' file; if you try using
 // it from a 'cpp' file it will not work!
 #if defined(__CUDACC__)
@@ -187,6 +198,8 @@ struct RegisterHIPDispatch {
 // is HIP in the PyTorch HIPify build.
 #define REGISTER_DISPATCH(name, fn) REGISTER_CUDA_DISPATCH(name, fn)
 // #define REGISTER_DISPATCH(name, fn) REGISTER_HIP_DISPATCH(name, fn)
+#elif defined(__HB__)
+#define REGISTER_DISPATCH(name, fn) REGISTER_HB_DISPATCH(name, fn)
 #elif defined(CPU_CAPABILITY)
 #define REGISTER_DISPATCH(name, fn) REGISTER_ARCH_DISPATCH(name, CPU_CAPABILITY, fn)
 #endif

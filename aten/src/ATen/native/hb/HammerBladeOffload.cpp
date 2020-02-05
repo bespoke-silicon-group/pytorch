@@ -1,4 +1,4 @@
-#include <ATen/native/HammerBladeOffload.h>
+#include <ATen/native/hb/HammerBladeOffload.h>
 
 #include <bsg_manycore.h>
 #include <bsg_manycore_tile.h>
