@@ -11,16 +11,14 @@
 namespace at {
 namespace native {
 
-namespace { // anonymous
+#define define_kernel_op_binary(kernel_stub, kernel_fn) \
+  void kernel_fn(TensorIterator& iter, Scalar alpha_scalar) { \
+    hb::offload_op_binary(iter, alpha_scalar, #kernel_fn); \
+  } \
+    \
+  REGISTER_DISPATCH(kernel_stub, &kernel_fn);
 
-#include <iostream>
-void add_kernel(TensorIterator& iter, Scalar alpha_scalar) {
-  std::cout << "\nCalled HB add kernel! Add offloading call!\n" << std::endl;
-  exit(1);
-}
-
-} // namespace anonymous
-
-REGISTER_DISPATCH(add_stub, &add_kernel);
+// hb_mc_<kernel> executes ${HB_DEVICE_DIR}/<kernel>.riscv to the device
+define_kernel_op_binary(add_stub, hb_mc_add);
 
 }} // namepsace at::native

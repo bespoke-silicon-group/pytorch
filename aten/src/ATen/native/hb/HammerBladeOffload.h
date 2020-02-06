@@ -1,8 +1,10 @@
 #include <ATen/ATen.h>
+#include <ATen/native/TensorIterator.h>
 #include <bsg_manycore_cuda.h>
 
 namespace at {
 namespace native {
+namespace hb {
 
 /**
  * HammerBlade Tensor Struct
@@ -37,9 +39,9 @@ typedef struct {
  * @param[in] kernel Name of the compute kernel to be launched
  * @return result tensor
  */
-void hb_mc_offload_op_binary(Tensor& result, const Tensor& self, 
-    const Tensor& other, Scalar alpha, const char* kernel);
+void offload_op_binary(TensorIterator& iter, Scalar alpha, const char* kernel);
 
 
+} // namespace hb
 } // namespace native
 } // namespace at
